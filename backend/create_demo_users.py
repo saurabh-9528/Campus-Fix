@@ -1,50 +1,64 @@
-import os
-from db.database import SessionLocal, engine, Base
+
+from db.database import SessionLocal
 from models.user import User, RoleEnum
 from core.security import get_password_hash
 
+
 def create_demo_users():
-    # Make sure tables exist
-    Base.metadata.create_all(bind=engine)
-    
     db = SessionLocal()
+
+    demo_users = [
+        {
+            "email": "student@campusfix.edu",
+            "full_name": "Demo Student",
+            "role": RoleEnum.student,
+        },
+        {
+            "email": "staff@campusfix.edu",
+            "full_name": "Demo Staff",
+            "role": RoleEnum.staff,
+        },
+        {
+            "email": "admin@campusfix.edu",
+            "full_name": "Demo Admin",
+            "role": RoleEnum.admin,
+        },
+    ]
+
     try:
-        # Create student
-        student = User(
-            email="student@campusfix.edu",
-            full_name="Demo Student",
-            password_hash=get_password_hash("password123"),
-            role=RoleEnum.student,
-            is_active=True
-        )
-        # Create staff
-        staff = User(
-            email="staff@campusfix.edu",
-            full_name="Demo Staff",
-            password_hash=get_password_hash("password123"),
-            role=RoleEnum.staff,
-            is_active=True
-        )
-        # Create admin
-        admin = User(
-            email="admin@campusfix.edu",
-            full_name="Demo Admin",
-            password_hash=get_password_hash("password123"),
-            role=RoleEnum.admin,
-            is_active=True
-        )
-        
-        db.add_all([student, staff, admin])
+        for user_data in demo_users:
+            existing_user = (
+                db.query(User)
+                .filter(User.email == user_data["email"])
+                .first()
+            )
+
+            if existing_user:
+                print(f"Already exists: {user_data['email']}")
+                continue
+
+            user = User(
+                email=user_data["email"],
+                full_name=user_data["full_name"],
+                password_hash=get_password_hash("password123"),
+                role=user_data["role"],
+                is_active=True,
+            )
+
+            db.add(user)
+            print(f"Created: {user_data['email']}")
+
         db.commit()
-        print("Successfully created demo users:")
-        print("- Student: student@campusfix.edu / password123")
-        print("- Staff:   staff@campusfix.edu   / password123")
-        print("- Admin:   admin@campusfix.edu   / password123")
+        print("Demo user setup completed successfully.")
+
     except Exception as e:
         db.rollback()
-        print("Users might already exist or another error occurred:", e)
+        print(f"Error creating demo users: {e}")
+        raise
+
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     create_demo_users()
