@@ -7,6 +7,7 @@ import { StatusBadge } from '../../components/ui/StatusBadge';
 import { PriorityBadge } from '../../components/ui/PriorityBadge';
 import { Spinner } from '../../components/ui/Spinner';
 import { Alert } from '../../components/ui/Alert';
+import { ComplaintAttachment } from '../../components/ComplaintAttachment';
 import { ArrowLeft, MapPin, Calendar, LayoutGrid, AlertCircle, MessageSquare, User, Wrench } from 'lucide-react';
 import { getCategoryLabel } from '../../utils/categories';
 import { ActivityTimeline } from '../../components/ui/ActivityTimeline';
@@ -141,17 +142,7 @@ export const ComplaintDetails = () => {
                 </div>
               </div>
 
-              {complaint.image_url && (
-                <div className="mt-4 border-t border-gray-100 pt-4">
-                  <h3 className="text-sm font-medium text-gray-900 mb-2">Attached Image</h3>
-                  <div className="mb-2">
-                    <img src={complaint.image_url} alt="Complaint Attachment" className="max-w-full h-auto max-h-96 rounded-md shadow-sm border border-gray-200" />
-                  </div>
-                  <a href={complaint.image_url} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline text-sm break-all">
-                    {complaint.image_url}
-                  </a>
-                </div>
-              )}
+              <ComplaintAttachment imageUrl={complaint.image_url} />
             </CardContent>
           </Card>
 

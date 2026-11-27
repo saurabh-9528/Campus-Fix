@@ -1,6 +1,6 @@
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List
+from typing import List, Optional
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "CampusFix"
@@ -11,6 +11,15 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7 # 7 days
     
     FRONTEND_URLS: str = "http://localhost:5173"
+
+    # Storage configuration ("local" for development/tests, "s3" for persistent production)
+    STORAGE_BACKEND: str = "local"
+    S3_BUCKET_NAME: Optional[str] = None
+    S3_REGION: str = "auto"
+    S3_ENDPOINT_URL: Optional[str] = None
+    S3_ACCESS_KEY_ID: Optional[str] = None
+    S3_SECRET_ACCESS_KEY: Optional[str] = None
+    S3_PREFIX: str = "complaints"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
