@@ -12,8 +12,9 @@ class Settings(BaseSettings):
     
     FRONTEND_URLS: str = "http://localhost:5173"
 
-    # Storage configuration ("local" for development/tests, "s3" for persistent production)
+    # Storage configuration ("local" for dev/tests, "disk" for Render Persistent Disk, "s3" for S3-compatible)
     STORAGE_BACKEND: str = "local"
+    PERSISTENT_DISK_PATH: Optional[str] = None
     S3_BUCKET_NAME: Optional[str] = None
     S3_REGION: str = "auto"
     S3_ENDPOINT_URL: Optional[str] = None

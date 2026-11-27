@@ -308,3 +308,49 @@ def test_render_rejects_local_ephemeral_storage(monkeypatch):
     )
     assert res.status_code == 503
     assert "not configured" in res.json()["detail"].lower()
+
+
+def test_render_persistent_disk_upload_and_authorized_download(tmp_path, monkeypatch):
+    from api.routers import upload
+    from services import storage_service
+
+    disk_dir = tmp_path / "render-persistent-disk"
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.setattr(upload, "get_storage_backend", storage_service.get_storage_backend)
+    monkeypatch.setattr(storage_service.settings, "STORAGE_BACKEND", "disk")
+    monkeypatch.setattr(storage_service.settings, "PERSISTENT_DISK_PATH", str(disk_dir))
+
+    owner_id, owner_headers = _create_user_and_headers(RoleEnum.student, "up_disk_owner@campusfix.edu")
+    _, other_headers = _create_user_and_headers(RoleEnum.student, "up_disk_other@campusfix.edu")
+
+    upload_res = client.post(
+        "/api/v1/upload/",
+        headers=owner_headers,
+        files={"file": ("disk.png", _make_image_bytes("PNG"), "image/png")},
+    )
+    assert upload_res.status_code == 200
+    image_url = upload_res.json()["image_url"]
+    object_id = image_url.split("/")[-1]
+    assert (disk_dir / object_id).is_file()
+
+    db = TestingSessionLocal()
+    try:
+        complaint = Complaint(
+            student_id=owner_id,
+            title="Disk Attachment Test",
+            description="Testing persistent disk",
+            category=ComplaintCategory.other,
+            location="Lab 1",
+            priority=ComplaintPriority.low,
+            status=ComplaintStatus.submitted,
+            image_url=image_url,
+        )
+        db.add(complaint)
+        db.commit()
+    finally:
+        db.close()
+
+    assert client.get(f"/api/v1/upload/files/{object_id}", headers=other_headers).status_code == 403
+    ok_res = client.get(f"/api/v1/upload/files/{object_id}", headers=owner_headers)
+    assert ok_res.status_code == 200
+    assert ok_res.headers["content-type"] == "image/png"

@@ -7,6 +7,7 @@ import pytest
 from services import storage_service
 from services.storage_service import (
     ObjectNotFoundError,
+    PersistentDiskStorageBackend,
     S3StorageBackend,
     StorageConfigurationError,
     StorageError,
@@ -144,3 +145,49 @@ def test_get_storage_backend_requires_s3_credentials(monkeypatch):
 
     with pytest.raises(StorageConfigurationError):
         storage_service.get_storage_backend()
+
+
+def test_persistent_disk_save_read_and_missing(tmp_path):
+    disk_dir = tmp_path / "campusfix-uploads"
+    backend = PersistentDiskStorageBackend(str(disk_dir))
+    object_id = "AbCdEfGh1234567890_xyz.png"
+    payload = b"\x89PNG\r\n\x1a\nfake-bytes"
+
+    backend.save(object_id, payload, "image/png")
+    data, media_type = backend.read(object_id)
+    assert data == payload
+    assert media_type == "image/png"
+
+    with pytest.raises(ObjectNotFoundError):
+        backend.read("ZzYyXxWw1234567890_xyz.png")
+
+    with pytest.raises(ValueError):
+        backend.read("../escape.png")
+
+
+@pytest.mark.parametrize("bad_path", ["", "   ", "relative/uploads", "./uploads"])
+def test_persistent_disk_requires_absolute_path(bad_path):
+    with pytest.raises(StorageConfigurationError):
+        PersistentDiskStorageBackend(bad_path)
+
+
+def test_get_storage_backend_disk_on_render_without_s3(tmp_path, monkeypatch):
+    disk_dir = tmp_path / "render-disk"
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.setattr(
+        storage_service,
+        "settings",
+        SimpleNamespace(
+            STORAGE_BACKEND="disk",
+            PERSISTENT_DISK_PATH=str(disk_dir),
+            S3_BUCKET_NAME=None,
+            S3_REGION="auto",
+            S3_ENDPOINT_URL=None,
+            S3_ACCESS_KEY_ID=None,
+            S3_SECRET_ACCESS_KEY=None,
+            S3_PREFIX="complaints",
+        ),
+    )
+
+    backend = storage_service.get_storage_backend()
+    assert isinstance(backend, PersistentDiskStorageBackend)

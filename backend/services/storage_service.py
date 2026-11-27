@@ -79,6 +79,27 @@ class LocalStorageBackend:
             raise StorageError("Failed to read object from local storage.") from exc
 
 
+class PersistentDiskStorageBackend(LocalStorageBackend):
+    """Persistent disk storage backend using a validated absolute mount path (e.g., Render Disk)."""
+
+    def __init__(self, mount_path: str):
+        if not mount_path or not mount_path.strip():
+            raise StorageConfigurationError(
+                "PERSISTENT_DISK_PATH must be set when STORAGE_BACKEND=disk."
+            )
+        candidate = Path(mount_path.strip())
+        if not candidate.is_absolute():
+            raise StorageConfigurationError(
+                "PERSISTENT_DISK_PATH must be an absolute path."
+            )
+        try:
+            super().__init__(str(candidate))
+        except OSError as exc:
+            raise StorageConfigurationError(
+                "Persistent disk mount path is not accessible."
+            ) from exc
+
+
 class S3StorageBackend:
     """S3-compatible object storage backend (AWS S3, Cloudflare R2, MinIO, etc.)."""
 
@@ -140,12 +161,14 @@ class S3StorageBackend:
 def get_storage_backend() -> StorageBackend:
     """Return the configured storage backend."""
     backend_name = (settings.STORAGE_BACKEND or "local").strip().lower()
-    if os.getenv("RENDER") and backend_name != "s3":
+    if os.getenv("RENDER") and backend_name == "local":
         raise StorageConfigurationError(
-            "Persistent object storage (STORAGE_BACKEND=s3) is required in Render production."
+            "Ephemeral local storage is not allowed in Render production. Configure STORAGE_BACKEND=disk or s3."
         )
     if backend_name == "local":
         return LocalStorageBackend()
+    if backend_name == "disk":
+        return PersistentDiskStorageBackend(settings.PERSISTENT_DISK_PATH or "")
     if backend_name == "s3":
         if not (
             settings.S3_BUCKET_NAME
