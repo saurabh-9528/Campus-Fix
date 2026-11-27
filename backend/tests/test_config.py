@@ -28,6 +28,24 @@ def test_secret_key_missing_raises_validation_error(monkeypatch):
         # so it relies purely on the environment (which we just cleared).
         Settings(_env_file=None)
 
+@pytest.mark.parametrize(
+    "raw_url, expected_url",
+    [
+        ("postgres://user:pass@host:5432/campusfix", "postgresql+pg8000://user:pass@host:5432/campusfix"),
+        ("postgresql://user:pass@host:5432/campusfix", "postgresql+pg8000://user:pass@host:5432/campusfix"),
+        ("postgresql+pg8000://user:pass@host:5432/campusfix", "postgresql+pg8000://user:pass@host:5432/campusfix"),
+        ("sqlite:///./campusfix.db", "sqlite:///./campusfix.db"),
+    ],
+)
+def test_database_url_normalization(monkeypatch, raw_url, expected_url):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("DATABASE_URL", raw_url)
+
+    from core.config import Settings
+
+    s = Settings(_env_file=None)
+    assert s.DATABASE_URL == expected_url
+
 def teardown_module(module):
     # Restore the original config after the tests
     import importlib

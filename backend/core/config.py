@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 
@@ -12,6 +13,18 @@ class Settings(BaseSettings):
     FRONTEND_URLS: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: str) -> str:
+        if not isinstance(value, str):
+            return value
+        url = value.strip()
+        if url.startswith("postgres://"):
+            return "postgresql+pg8000://" + url[len("postgres://"):]
+        if url.startswith("postgresql://"):
+            return "postgresql+pg8000://" + url[len("postgresql://"):]
+        return url
 
     @property
     def cors_origins(self) -> List[str]:
