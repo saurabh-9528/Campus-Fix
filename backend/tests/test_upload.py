@@ -354,3 +354,55 @@ def test_render_persistent_disk_upload_and_authorized_download(tmp_path, monkeyp
     ok_res = client.get(f"/api/v1/upload/files/{object_id}", headers=owner_headers)
     assert ok_res.status_code == 200
     assert ok_res.headers["content-type"] == "image/png"
+
+
+def test_render_database_storage_upload_and_authorized_download(monkeypatch):
+    from api.routers import upload
+    from services import storage_service
+
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.setattr(storage_service, "SessionLocal", TestingSessionLocal)
+    monkeypatch.setattr(upload, "get_storage_backend", storage_service.get_storage_backend)
+    monkeypatch.setattr(storage_service.settings, "STORAGE_BACKEND", "db")
+    monkeypatch.setattr(storage_service.settings, "PERSISTENT_DISK_PATH", None)
+
+    owner_id, owner_headers = _create_user_and_headers(RoleEnum.student, "up_db_owner@campusfix.edu")
+    _, other_headers = _create_user_and_headers(RoleEnum.student, "up_db_other@campusfix.edu")
+    staff_id, staff_headers = _create_user_and_headers(RoleEnum.staff, "up_db_staff@campusfix.edu")
+    _, admin_headers = _create_user_and_headers(RoleEnum.admin, "up_db_admin@campusfix.edu")
+
+    upload_res = client.post(
+        "/api/v1/upload/",
+        headers=owner_headers,
+        files={"file": ("db_evidence.png", _make_image_bytes("PNG"), "image/png")},
+    )
+    assert upload_res.status_code == 200
+    image_url = upload_res.json()["image_url"]
+    assert "/api/v1/upload/files/" in image_url
+    object_id = image_url.split("/")[-1]
+
+    db = TestingSessionLocal()
+    try:
+        complaint = Complaint(
+            student_id=owner_id,
+            assigned_staff_id=staff_id,
+            title="DB Storage Attachment Test",
+            description="Testing PostgreSQL/SQLite BYTEA storage",
+            category=ComplaintCategory.other,
+            location="Lab 2",
+            priority=ComplaintPriority.medium,
+            status=ComplaintStatus.assigned,
+            image_url=image_url,
+        )
+        db.add(complaint)
+        db.commit()
+    finally:
+        db.close()
+
+    assert client.get(f"/api/v1/upload/files/{object_id}").status_code == 401
+    assert client.get(f"/api/v1/upload/files/{object_id}", headers=other_headers).status_code == 403
+
+    for hdrs in (owner_headers, staff_headers, admin_headers):
+        res = client.get(f"/api/v1/upload/files/{object_id}", headers=hdrs)
+        assert res.status_code == 200
+        assert res.headers["content-type"] == "image/png"

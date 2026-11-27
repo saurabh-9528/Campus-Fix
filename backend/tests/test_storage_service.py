@@ -6,6 +6,7 @@ import pytest
 
 from services import storage_service
 from services.storage_service import (
+    DatabaseStorageBackend,
     ObjectNotFoundError,
     PersistentDiskStorageBackend,
     S3StorageBackend,
@@ -191,3 +192,98 @@ def test_get_storage_backend_disk_on_render_without_s3(tmp_path, monkeypatch):
 
     backend = storage_service.get_storage_backend()
     assert isinstance(backend, PersistentDiskStorageBackend)
+
+
+def test_database_storage_save_read_missing_duplicate_and_session_close(tmp_path):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from db.database import Base
+    import models.uploaded_file  # noqa: F401
+
+    db_url = f"sqlite:///{tmp_path / 'test_db_storage.db'}"
+    eng = create_engine(db_url, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=eng)
+    Session = sessionmaker(autocommit=False, autoflush=False, bind=eng)
+
+    closed_count = 0
+
+    def tracked_session():
+        sess = Session()
+        orig_close = sess.close
+
+        def wrapped_close():
+            nonlocal closed_count
+            closed_count += 1
+            orig_close()
+
+        sess.close = wrapped_close
+        return sess
+
+    backend = DatabaseStorageBackend(session_factory=tracked_session)
+    object_id = "AbCdEfGh1234567890_db.png"
+    payload = b"\x89PNG\r\n\x1a\nfake-bytes"
+
+    backend.save(object_id, payload, "image/png")
+    data, media_type = backend.read(object_id)
+    assert data == payload
+    assert media_type == "image/png"
+    assert closed_count == 2
+
+    # Missing file
+    with pytest.raises(ObjectNotFoundError):
+        backend.read("ZzYyXxWw1234567890_db.png")
+    assert closed_count == 3
+
+    # Duplicate object_id triggers IntegrityError -> rollback + StorageError + close
+    with pytest.raises(StorageError):
+        backend.save(object_id, payload, "image/png")
+    assert closed_count == 4
+
+    eng.dispose()
+
+
+def test_database_storage_rollback_and_close_on_write_failure():
+    events = []
+
+    class BrokenSession:
+        def add(self, obj):
+            events.append("add")
+
+        def commit(self):
+            events.append("commit")
+            raise RuntimeError("SQLite/Postgres internal error: sensitive detail")
+
+        def rollback(self):
+            events.append("rollback")
+
+        def close(self):
+            events.append("close")
+
+    backend = DatabaseStorageBackend(session_factory=BrokenSession)
+    with pytest.raises(StorageError) as err_info:
+        backend.save("AbCdEfGh1234567890_err.png", b"data", "image/png")
+
+    assert "sensitive detail" not in str(err_info.value)
+    assert events == ["add", "commit", "rollback", "close"]
+
+
+def test_get_storage_backend_db_on_render_without_s3_or_disk(monkeypatch):
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.setattr(
+        storage_service,
+        "settings",
+        SimpleNamespace(
+            STORAGE_BACKEND="db",
+            PERSISTENT_DISK_PATH=None,
+            S3_BUCKET_NAME=None,
+            S3_REGION="auto",
+            S3_ENDPOINT_URL=None,
+            S3_ACCESS_KEY_ID=None,
+            S3_SECRET_ACCESS_KEY=None,
+            S3_PREFIX="complaints",
+        ),
+    )
+
+    backend = storage_service.get_storage_backend()
+    assert isinstance(backend, DatabaseStorageBackend)

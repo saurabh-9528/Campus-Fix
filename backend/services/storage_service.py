@@ -3,7 +3,11 @@ import re
 from pathlib import Path
 from typing import Protocol, Tuple
 
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+
 from core.config import settings
+from db.database import SessionLocal
+from models.uploaded_file import UploadedFile
 
 OBJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{16,128}\.(jpg|png|webp)$")
 
@@ -158,15 +162,71 @@ class S3StorageBackend:
             raise StorageError("Failed to retrieve object from S3 storage.") from exc
 
 
+class DatabaseStorageBackend:
+    """Database-backed storage using SQLAlchemy LargeBinary (PostgreSQL BYTEA / SQLite BLOB)."""
+
+    def __init__(self, session_factory=None):
+        self.session_factory = session_factory
+
+    def _new_session(self):
+        factory = self.session_factory or SessionLocal
+        return factory()
+
+    def save(self, object_id: str, data: bytes, content_type: str) -> None:
+        validate_object_id(object_id)
+        db = self._new_session()
+        try:
+            record = UploadedFile(
+                object_id=object_id,
+                content_type=content_type,
+                size_bytes=len(data),
+                data=data,
+            )
+            db.add(record)
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise StorageError("Duplicate object identifier.") from exc
+        except SQLAlchemyError as exc:
+            db.rollback()
+            raise StorageError("Failed to store object in database storage.") from exc
+        except Exception as exc:
+            db.rollback()
+            raise StorageError("Failed to store object in database storage.") from exc
+        finally:
+            db.close()
+
+    def read(self, object_id: str) -> Tuple[bytes, str]:
+        validate_object_id(object_id)
+        db = self._new_session()
+        try:
+            record = (
+                db.query(UploadedFile)
+                .filter(UploadedFile.object_id == object_id)
+                .first()
+            )
+            if record is None:
+                raise ObjectNotFoundError("File not found.")
+            return bytes(record.data), record.content_type
+        except ObjectNotFoundError:
+            raise
+        except SQLAlchemyError as exc:
+            raise StorageError("Failed to retrieve object from database storage.") from exc
+        finally:
+            db.close()
+
+
 def get_storage_backend() -> StorageBackend:
     """Return the configured storage backend."""
     backend_name = (settings.STORAGE_BACKEND or "local").strip().lower()
     if os.getenv("RENDER") and backend_name == "local":
         raise StorageConfigurationError(
-            "Ephemeral local storage is not allowed in Render production. Configure STORAGE_BACKEND=disk or s3."
+            "Ephemeral local storage is not allowed in Render production. Configure STORAGE_BACKEND=db, disk, or s3."
         )
     if backend_name == "local":
         return LocalStorageBackend()
+    if backend_name == "db":
+        return DatabaseStorageBackend()
     if backend_name == "disk":
         return PersistentDiskStorageBackend(settings.PERSISTENT_DISK_PATH or "")
     if backend_name == "s3":

@@ -21,6 +21,7 @@ from models.complaint import Complaint
 from models.feedback import Feedback
 from models.notification import Notification
 from models.history import ComplaintHistory
+from models.uploaded_file import UploadedFile
 import os
 
 target_metadata = Base.metadata
