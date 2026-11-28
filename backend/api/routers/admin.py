@@ -5,7 +5,7 @@ from typing import List, Optional
 from db.database import get_db
 from models.user import User, RoleEnum
 from models.complaint import Complaint, ComplaintStatus, ComplaintCategory, ComplaintPriority
-from schemas.complaint import ComplaintResponse, ComplaintAssignmentRequest
+from schemas.complaint import ComplaintResponse, ComplaintAssignmentRequest, ComplaintPriorityUpdateRequest
 from schemas.user import UserResponse
 from api.deps import require_admin
 from services.notification_service import create_notification
@@ -94,7 +94,7 @@ def assign_complaint(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="User is not a staff member"
             )
-        if not staff_user.is_active:
+        if not staff_user.is_active or staff_user.account_status != "active":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Staff member is inactive"
@@ -136,16 +136,87 @@ def assign_complaint(
         
     return complaint
 
-@router.get("/staff", response_model=List[UserResponse])
-def get_active_staff(
+@router.patch("/complaints/{complaint_id}/priority", response_model=ComplaintResponse)
+def update_complaint_priority(
+    complaint_id: int,
+    priority_update: ComplaintPriorityUpdateRequest,
     db: Session = Depends(get_db),
     current_admin: User = Depends(require_admin)
 ):
-    staff_members = db.query(User).filter(
-        User.role == RoleEnum.staff,
-        User.is_active == True
-    ).all()
-    return staff_members
+    complaint = db.query(Complaint).filter(Complaint.id == complaint_id).first()
+    if not complaint:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Complaint not found"
+        )
+
+    if complaint.status in [ComplaintStatus.resolved, ComplaintStatus.closed]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot update priority of a resolved or closed complaint"
+        )
+
+    previous_priority = complaint.priority
+    if priority_update.priority == previous_priority:
+        return complaint
+
+    complaint.priority = priority_update.priority
+    history = ComplaintHistory(
+        complaint_id=complaint_id,
+        actor_id=current_admin.id,
+        action=HistoryAction.status_changed,
+        previous_status=None,
+        new_status=None,
+        details=f"Priority changed from {previous_priority.value} to {priority_update.priority.value}"
+    )
+    db.add(history)
+    db.commit()
+    db.refresh(complaint)
+    return complaint
+
+@router.get("/staff", response_model=List[UserResponse])
+def get_active_staff(
+    include_pending: bool = False,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(require_admin)
+):
+    query = db.query(User).filter(User.role == RoleEnum.staff)
+    if include_pending:
+        query = query.filter(User.account_status.in_(["active", "pending_activation"]))
+    else:
+        query = query.filter(User.is_active == True, User.account_status == "active")
+    return query.all()
+
+@router.patch("/staff/{staff_id}/activate", response_model=UserResponse)
+def activate_staff_account(
+    staff_id: int,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(require_admin)
+):
+    staff_user = db.query(User).filter(User.id == staff_id).first()
+    if not staff_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Staff member not found"
+        )
+    if staff_user.role != RoleEnum.staff:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is not a staff member"
+        )
+    if staff_user.account_status == "inactive":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot activate an inactive staff account"
+        )
+    if staff_user.account_status == "active" and staff_user.is_active:
+        return staff_user
+
+    staff_user.is_active = True
+    staff_user.account_status = "active"
+    db.commit()
+    db.refresh(staff_user)
+    return staff_user
 
 @router.get("/complaints/{complaint_id}/history", response_model=List[ComplaintHistoryResponse])
 def get_complaint_history(

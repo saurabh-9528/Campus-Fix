@@ -4,7 +4,6 @@ import { AuthProvider } from './context/AuthContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 import { Login } from './pages/auth/Login';
-import { Register } from './pages/auth/Register';
 
 // Student Pages
 import { StudentDashboard } from './pages/student/Dashboard';
@@ -23,6 +22,7 @@ import { StaffList as AdminStaffList } from './pages/admin/StaffList';
 import { StaffDashboard } from './pages/staff/Dashboard';
 import { ComplaintList as StaffComplaintList } from './pages/staff/ComplaintList';
 import { ComplaintDetails as StaffComplaintDetails } from './pages/staff/ComplaintDetails';
+import { StaffChangePassword } from './pages/staff/ChangePassword';
 
 function App() {
   return (
@@ -32,7 +32,11 @@ function App() {
           {/* Public Routes */}
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+
+          {/* Mandatory First-Login Staff Password Change */}
+          <Route element={<ProtectedRoute allowedRoles={['staff']} />}>
+            <Route path="/staff/change-password" element={<StaffChangePassword />} />
+          </Route>
 
           {/* Protected Routes inside AppLayout */}
           <Route element={<AppLayout />}>

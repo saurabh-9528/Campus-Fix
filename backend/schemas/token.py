@@ -5,3 +5,4 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     user_id: int
     role: str
+    must_change_password: bool = False

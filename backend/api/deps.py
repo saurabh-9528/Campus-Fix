@@ -25,7 +25,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.query(User).filter(User.id == int(user_id)).first()
     if user is None:
         raise credentials_exception
-    if not user.is_active:
+    if not user.is_active or user.account_status != "active":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
     return user
 
@@ -37,6 +37,11 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 def require_staff(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role.value != "staff":
         raise HTTPException(status_code=403, detail="Not enough permissions")
+    if current_user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password change required before accessing staff resources"
+        )
     return current_user
 
 def require_student(current_user: User = Depends(get_current_user)) -> User:

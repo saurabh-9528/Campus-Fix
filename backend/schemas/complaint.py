@@ -34,6 +34,9 @@ class ComplaintResponse(BaseModel):
 class ComplaintAssignmentRequest(BaseModel):
     staff_id: Optional[int] = None
 
+class ComplaintPriorityUpdateRequest(BaseModel):
+    priority: ComplaintPriority
+
 class StaffStatusUpdateRequest(BaseModel):
     status: ComplaintStatus
     resolution_note: Optional[NonEmptyStr1000] = None

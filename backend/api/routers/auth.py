@@ -12,36 +12,12 @@ from sqlalchemy.exc import IntegrityError
 
 router = APIRouter()
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register(user_in: UserRegister, db: Session = Depends(get_db)):
-    # Check if user exists
-    user = db.query(User).filter(User.email == user_in.email).first()
-    if user:
-        raise HTTPException(
-            status_code=400,
-            detail="A user with this email already exists."
-        )
-    
-    # Create new user
-    hashed_password = get_password_hash(user_in.password)
-    
-    db_user = User(
-        full_name=user_in.full_name,
-        email=user_in.email,
-        password_hash=hashed_password,
-        role=RoleEnum.student
+@router.post("/register", status_code=status.HTTP_403_FORBIDDEN)
+def register():
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Public registration is disabled. Accounts are managed by administrators.",
     )
-    try:
-        db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(
-            status_code=400,
-            detail="A user with this email already exists."
-        )
-    return db_user
 
 @router.post("/login", response_model=TokenResponse)
 def login(user_in: UserLogin, db: Session = Depends(get_db)):
@@ -53,8 +29,9 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+    if not user.is_active or user.account_status != "active":
+        detail = "Account is pending activation" if user.account_status == "pending_activation" else "Inactive user"
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
     access_token = create_access_token(
         data={"sub": str(user.id), "role": user.role.value}
@@ -63,7 +40,8 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
         "access_token": access_token,
         "token_type": "bearer",
         "user_id": user.id,
-        "role": user.role.value
+        "role": user.role.value,
+        "must_change_password": user.must_change_password,
     }
 
 @router.get("/me", response_model=UserResponse)
@@ -93,7 +71,20 @@ def change_password(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Incorrect current password."
         )
-    
+
+    if current_user.must_change_password:
+        if len(password_data.new_password) < 8:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="New password must be at least 8 characters."
+            )
+        if password_data.new_password == password_data.current_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="New password must be different from current temporary password."
+            )
+
     current_user.password_hash = get_password_hash(password_data.new_password)
+    current_user.must_change_password = False
     db.commit()
     return {"detail": "Password successfully updated."}

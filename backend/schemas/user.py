@@ -37,6 +37,10 @@ class UserResponse(UserBase):
     id: int
     role: str
     is_active: bool
+    employee_id: str | None = None
+    department: str | None = None
+    account_status: str = "active"
+    must_change_password: bool = False
     created_at: datetime
     updated_at: datetime
 

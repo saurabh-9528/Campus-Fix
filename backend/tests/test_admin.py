@@ -254,3 +254,132 @@ def test_admin_cannot_assign_resolved_complaint():
     )
     assert assign_res.status_code == 400
     assert "resolved or closed" in assign_res.json()["detail"]
+
+def _create_test_complaint(priority=ComplaintPriority.low, status_val=ComplaintStatus.submitted) -> int:
+    db = TestingSessionLocal()
+    student = db.query(User).filter(User.email == "student@test.com").first()
+    c = Complaint(
+        student_id=student.id,
+        title="Priority Test Complaint",
+        description="Testing priority updates.",
+        category=ComplaintCategory.other,
+        location="Campus",
+        priority=priority,
+        status=status_val
+    )
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    c_id = c.id
+    db.close()
+    return c_id
+
+def test_admin_update_priority_success_persistence_and_history():
+    admin_token = get_token_for("admin@test.com")
+    c_id = _create_test_complaint(priority=ComplaintPriority.low, status_val=ComplaintStatus.submitted)
+
+    res = client.patch(
+        f"/api/v1/admin/complaints/{c_id}/priority",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"priority": "high"}
+    )
+    assert res.status_code == 200
+    assert res.json()["priority"] == "high"
+
+    # Verify persistence via GET
+    get_res = client.get(f"/api/v1/admin/complaints/{c_id}", headers={"Authorization": f"Bearer {admin_token}"})
+    assert get_res.status_code == 200
+    assert get_res.json()["priority"] == "high"
+
+    # Verify history entry
+    hist_res = client.get(f"/api/v1/admin/complaints/{c_id}/history", headers={"Authorization": f"Bearer {admin_token}"})
+    assert hist_res.status_code == 200
+    history = hist_res.json()
+    assert len(history) == 1
+    assert history[0]["action"] == "status_changed"
+    assert history[0]["previous_status"] is None
+    assert history[0]["new_status"] is None
+    assert history[0]["details"] == "Priority changed from low to high"
+    assert history[0]["actor"]["role"] == "admin"
+
+def test_admin_update_priority_noop_no_duplicate_history():
+    admin_token = get_token_for("admin@test.com")
+    c_id = _create_test_complaint(priority=ComplaintPriority.medium, status_val=ComplaintStatus.assigned)
+
+    res = client.patch(
+        f"/api/v1/admin/complaints/{c_id}/priority",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"priority": "medium"}
+    )
+    assert res.status_code == 200
+    assert res.json()["priority"] == "medium"
+
+    hist_res = client.get(f"/api/v1/admin/complaints/{c_id}/history", headers={"Authorization": f"Bearer {admin_token}"})
+    assert hist_res.status_code == 200
+    assert len(hist_res.json()) == 0
+
+def test_admin_update_priority_rbac():
+    c_id = _create_test_complaint()
+
+    # Unauthenticated
+    unauth_res = client.patch(f"/api/v1/admin/complaints/{c_id}/priority", json={"priority": "critical"})
+    assert unauth_res.status_code == 401
+
+    # Student
+    student_token = get_token_for("student@test.com")
+    student_res = client.patch(
+        f"/api/v1/admin/complaints/{c_id}/priority",
+        headers={"Authorization": f"Bearer {student_token}"},
+        json={"priority": "critical"}
+    )
+    assert student_res.status_code == 403
+
+    # Staff
+    staff_token = get_token_for("staff@test.com")
+    staff_res = client.patch(
+        f"/api/v1/admin/complaints/{c_id}/priority",
+        headers={"Authorization": f"Bearer {staff_token}"},
+        json={"priority": "critical"}
+    )
+    assert staff_res.status_code == 403
+
+def test_admin_update_priority_not_found():
+    admin_token = get_token_for("admin@test.com")
+    res = client.patch(
+        "/api/v1/admin/complaints/999999/priority",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"priority": "high"}
+    )
+    assert res.status_code == 404
+
+def test_admin_update_priority_invalid_value():
+    admin_token = get_token_for("admin@test.com")
+    c_id = _create_test_complaint()
+
+    res = client.patch(
+        f"/api/v1/admin/complaints/{c_id}/priority",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"priority": "urgent"}
+    )
+    assert res.status_code == 422
+
+    missing_res = client.patch(
+        f"/api/v1/admin/complaints/{c_id}/priority",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={}
+    )
+    assert missing_res.status_code == 422
+
+def test_admin_cannot_update_priority_resolved_or_closed():
+    admin_token = get_token_for("admin@test.com")
+    resolved_id = _create_test_complaint(priority=ComplaintPriority.low, status_val=ComplaintStatus.resolved)
+    closed_id = _create_test_complaint(priority=ComplaintPriority.low, status_val=ComplaintStatus.closed)
+
+    for c_id in (resolved_id, closed_id):
+        res = client.patch(
+            f"/api/v1/admin/complaints/{c_id}/priority",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={"priority": "critical"}
+        )
+        assert res.status_code == 400
+        assert "resolved or closed" in res.json()["detail"]

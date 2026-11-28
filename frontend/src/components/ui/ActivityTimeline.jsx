@@ -33,7 +33,7 @@ const ActionLabel = ({ action, details }) => {
     case 'unassigned':
       return 'Unassigned';
     case 'status_changed':
-      return 'Status Updated';
+      return details && details.startsWith('Priority changed') ? 'Priority Updated' : 'Status Updated';
     case 'resolved':
       return 'Resolved';
     case 'closed':
@@ -82,6 +82,12 @@ export const ActivityTimeline = ({ history = [] }) => {
                     <div className="mt-2 text-xs bg-white px-2 py-1 rounded border border-gray-200 inline-block">
                       <span className="text-gray-500 line-through mr-1">{event.previous_status}</span>
                       <span className="text-gray-900 font-medium">→ {event.new_status}</span>
+                    </div>
+                  )}
+
+                  {event.action === 'status_changed' && event.details && (
+                    <div className="mt-2 text-xs bg-white text-gray-700 px-2 py-1 rounded border border-gray-200 inline-block">
+                      {event.details}
                     </div>
                   )}
 

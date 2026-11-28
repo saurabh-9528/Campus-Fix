@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -22,7 +22,11 @@ export const Login = () => {
 
     try {
       const user = await login(email, password);
-      navigate(`/${user.role}/dashboard`);
+      if (user.role === 'staff' && user.must_change_password) {
+        navigate('/staff/change-password', { replace: true });
+      } else {
+        navigate(`/${user.role}/dashboard`);
+      }
     } catch (err) {
       setError(err.message || 'Failed to login. Please check your credentials.');
     } finally {
@@ -78,11 +82,8 @@ export const Login = () => {
                 {isSubmitting ? 'Signing in...' : 'Sign in'}
               </Button>
               
-              <div className="text-sm text-center text-gray-500 mt-4">
-                Don't have an account?{' '}
-                <Link to="/register" className="font-medium text-primary-600 hover:text-primary-500">
-                  Register here
-                </Link>
+              <div className="text-xs text-center text-gray-500 mt-4">
+                Accounts are managed by your campus administrator.
               </div>
             </form>
           </CardContent>

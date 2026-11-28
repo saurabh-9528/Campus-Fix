@@ -24,9 +24,22 @@ export const adminApi = {
     });
   },
 
-  // Get all active staff members
-  getStaff: async () => {
-    return await apiClient.get('/admin/staff');
+  // Update complaint priority
+  updatePriority: async (complaintId, priority) => {
+    return await apiClient.patch(`/admin/complaints/${complaintId}/priority`, {
+      priority
+    });
+  },
+
+  // Get staff members (optionally including pending activation)
+  getStaff: async (includePending = false) => {
+    const url = includePending ? '/admin/staff?include_pending=true' : '/admin/staff';
+    return await apiClient.get(url);
+  },
+
+  // Activate a pending staff account
+  activateStaff: async (staffId) => {
+    return await apiClient.patch(`/admin/staff/${staffId}/activate`);
   },
 
   // Get history for a complaint

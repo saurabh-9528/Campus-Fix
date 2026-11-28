@@ -27,6 +27,12 @@ export const ComplaintDetails = () => {
   const [assignError, setAssignError] = useState(null);
   const [assignSuccess, setAssignSuccess] = useState(false);
 
+  // Priority state
+  const [selectedPriority, setSelectedPriority] = useState('medium');
+  const [updatingPriority, setUpdatingPriority] = useState(false);
+  const [priorityError, setPriorityError] = useState(null);
+  const [prioritySuccess, setPrioritySuccess] = useState(false);
+
   const fetchDetails = async () => {
     try {
       setLoading(true);
@@ -41,6 +47,9 @@ export const ComplaintDetails = () => {
       
       if (complaintData.assigned_staff_id) {
         setSelectedStaff(complaintData.assigned_staff_id.toString());
+      }
+      if (complaintData.priority) {
+        setSelectedPriority(complaintData.priority);
       }
     } catch (err) {
       setError(err.message || 'Failed to load details');
@@ -74,6 +83,28 @@ export const ComplaintDetails = () => {
       setAssignError(err.message || 'Failed to assign staff');
     } finally {
       setAssigning(false);
+    }
+  };
+
+  const handlePriorityUpdate = async () => {
+    if (!selectedPriority || selectedPriority === complaint?.priority) return;
+
+    setUpdatingPriority(true);
+    setPriorityError(null);
+    setPrioritySuccess(false);
+
+    try {
+      const updatedData = await adminApi.updatePriority(id, selectedPriority);
+      setComplaint(updatedData);
+      setSelectedPriority(updatedData.priority);
+      setPrioritySuccess(true);
+      const historyData = await adminApi.getHistory(id).catch(() => []);
+      setHistory(historyData);
+      setTimeout(() => setPrioritySuccess(false), 3000);
+    } catch (err) {
+      setPriorityError(err.message || 'Failed to update priority');
+    } finally {
+      setUpdatingPriority(false);
     }
   };
 
@@ -239,6 +270,55 @@ export const ComplaintDetails = () => {
                   </p>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-gray-200 shadow-sm">
+            <CardHeader className="border-b border-gray-100 pb-4">
+              <CardTitle className="flex items-center justify-between text-base">
+                <span className="flex items-center">
+                  <AlertCircle className="h-5 w-5 mr-2 text-gray-500" />
+                  Priority
+                </span>
+                <PriorityBadge priority={complaint.priority} />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+              {priorityError && <Alert type="error" message={priorityError} />}
+              {prioritySuccess && <Alert type="success" message="Priority updated successfully." />}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Complaint Priority
+                </label>
+                <div className="flex flex-col space-y-3">
+                  <select
+                    className="w-full rounded-md border border-gray-300 h-10 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    value={selectedPriority}
+                    onChange={(e) => setSelectedPriority(e.target.value)}
+                    disabled={updatingPriority || complaint.status === 'resolved' || complaint.status === 'closed'}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+
+                  <Button
+                    onClick={handlePriorityUpdate}
+                    disabled={
+                      updatingPriority ||
+                      !selectedPriority ||
+                      selectedPriority === complaint.priority ||
+                      complaint.status === 'resolved' ||
+                      complaint.status === 'closed'
+                    }
+                    className="w-full"
+                  >
+                    {updatingPriority ? 'Updating...' : 'Update Priority'}
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
