@@ -7,7 +7,8 @@ export const StatusBadge = ({ status, className = '' }) => {
     assigned: { variant: 'warning', label: 'Assigned' },
     in_progress: { variant: 'progress', label: 'In Progress' },
     resolved: { variant: 'success', label: 'Resolved' },
-    closed: { variant: 'neutral', label: 'Closed' }
+    closed: { variant: 'neutral', label: 'Closed' },
+    invalid: { variant: 'danger', label: 'Invalid / Not Found' }
   };
 
   const config = statusConfig[status?.toLowerCase()] || { variant: 'neutral', label: status };

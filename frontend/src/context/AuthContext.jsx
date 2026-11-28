@@ -23,6 +23,13 @@ export const AuthProvider = ({ children }) => {
     };
 
     initAuth();
+
+    const handleUnauthorized = () => {
+      localStorage.removeItem('token');
+      setUser(null);
+    };
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
   }, []);
 
   const login = async (email, password) => {

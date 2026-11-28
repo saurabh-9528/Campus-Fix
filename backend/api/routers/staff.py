@@ -87,6 +87,17 @@ def update_complaint_status(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Resolution note is too long"
             )
+    elif current_status in (ComplaintStatus.assigned, ComplaintStatus.in_progress) and target_status == ComplaintStatus.invalid:
+        if not update_req.resolution_note or len(update_req.resolution_note.strip()) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A verification note is required when marking a complaint as Invalid / Not Found"
+            )
+        if len(update_req.resolution_note) > 1000:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Verification note is too long"
+            )
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -104,7 +115,7 @@ def update_complaint_status(
         action=action,
         previous_status=current_status,
         new_status=target_status,
-        details=update_req.resolution_note if target_status == ComplaintStatus.resolved else None
+        details=update_req.resolution_note if target_status in (ComplaintStatus.resolved, ComplaintStatus.invalid) else None
     )
     db.add(history)
 
@@ -117,6 +128,9 @@ def update_complaint_status(
         create_notification(db, complaint.student_id, "Complaint Resolved", f"Your complaint '{complaint.title}' has been resolved.", NotificationType.complaint_resolved, complaint.id)
         # Optional: notify admin that it was resolved.
         notify_admins(db, "Complaint Resolved", f"The complaint '{complaint.title}' has been marked as resolved by staff.", NotificationType.complaint_resolved, complaint.id)
+    elif target_status == ComplaintStatus.invalid:
+        create_notification(db, complaint.student_id, "Complaint Marked Invalid / Not Found", f"Your complaint '{complaint.title}' was marked Invalid / Not Found. Reason: {complaint.resolution_note}", NotificationType.complaint_closed, complaint.id)
+        notify_admins(db, "Complaint Marked Invalid", f"The complaint '{complaint.title}' was marked Invalid / Not Found by staff.", NotificationType.complaint_closed, complaint.id)
 
     return complaint
 

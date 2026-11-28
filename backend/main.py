@@ -1,17 +1,29 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from api.routers import auth, complaints, admin, staff, notifications, upload
 from core.config import settings
 
 app = FastAPI(title="CampusFix API")
 
+cors_origins = settings.cors_origins
+allow_credentials = "*" not in cors_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins, 
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
 
 @app.get("/")
 def root():

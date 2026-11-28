@@ -7,7 +7,9 @@ import {
   PlusCircle, 
   Users, 
   User,
-  Megaphone
+  Megaphone,
+  BarChart3,
+  GraduationCap
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, setIsOpen }) => {
@@ -33,7 +35,9 @@ export const Sidebar = ({ isOpen, setIsOpen }) => {
   const adminLinks = [
     { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/admin/complaints', label: 'All Complaints', icon: FileText },
+    { to: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
     { to: '/admin/staff', label: 'Manage Staff', icon: Users },
+    { to: '/admin/students', label: 'Manage Students', icon: GraduationCap },
     { to: '/admin/profile', label: 'Profile', icon: User },
   ];
 
@@ -65,6 +69,7 @@ export const Sidebar = ({ isOpen, setIsOpen }) => {
               <NavLink
                 key={link.to}
                 to={link.to}
+                end={link.to === '/student/complaints'}
                 onClick={() => setIsOpen(false)}
                 className={({ isActive }) =>
                   `flex items-center px-3 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 ${
@@ -74,8 +79,12 @@ export const Sidebar = ({ isOpen, setIsOpen }) => {
                   }`
                 }
               >
-                <Icon className={`mr-3 h-5 w-5 ${link.to === window.location.pathname ? 'text-primary-600' : 'text-gray-400'}`} />
-                {link.label}
+                {({ isActive }) => (
+                  <>
+                    <Icon className={`mr-3 h-5 w-5 ${isActive ? 'text-primary-600' : 'text-gray-400'}`} />
+                    {link.label}
+                  </>
+                )}
               </NavLink>
             );
           })}

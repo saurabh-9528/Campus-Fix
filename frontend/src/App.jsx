@@ -17,6 +17,8 @@ import { AdminDashboard } from './pages/admin/Dashboard';
 import { ComplaintList as AdminComplaintList } from './pages/admin/ComplaintList';
 import { ComplaintDetails as AdminComplaintDetails } from './pages/admin/ComplaintDetails';
 import { StaffList as AdminStaffList } from './pages/admin/StaffList';
+import { AdminAnalytics } from './pages/admin/Analytics';
+import { StudentList as AdminStudentList } from './pages/admin/StudentList';
 
 // Staff Pages
 import { StaffDashboard } from './pages/staff/Dashboard';
@@ -63,7 +65,9 @@ function App() {
               <Route path="/admin/dashboard" element={<AdminDashboard />} />
               <Route path="/admin/complaints" element={<AdminComplaintList />} />
               <Route path="/admin/complaints/:id" element={<AdminComplaintDetails />} />
+              <Route path="/admin/analytics" element={<AdminAnalytics />} />
               <Route path="/admin/staff" element={<AdminStaffList />} />
+              <Route path="/admin/students" element={<AdminStudentList />} />
               <Route path="/admin/profile" element={<Profile />} />
             </Route>
 

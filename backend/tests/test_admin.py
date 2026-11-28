@@ -168,9 +168,18 @@ def test_admin_analytics_success():
     assert data["total_complaints"] >= 1
     assert "assigned" in data["status_distribution"]
     assert "other" in data["category_distribution"]
+    assert "low" in data["priority_distribution"]
     assert "staff_workload" in data
     # Staff workload should be a list
     assert isinstance(data["staff_workload"], list)
+    # Trend data is zero-filled for the full reporting window
+    assert len(data["daily_trend"]) == 30
+    assert len(data["weekly_trend"]) == 8
+    assert all("submitted" in point and "resolved" in point for point in data["daily_trend"])
+    if data["staff_workload"]:
+        member = data["staff_workload"][0]
+        assert "resolved_complaints" in member
+        assert "total_assigned" in member
 
 def test_student_cannot_access_analytics():
     token = get_token_for("student@test.com")
@@ -383,3 +392,61 @@ def test_admin_cannot_update_priority_resolved_or_closed():
         )
         assert res.status_code == 400
         assert "resolved or closed" in res.json()["detail"]
+
+
+def test_admin_update_complaint_status_and_bulk_operations():
+    admin_token = get_token_for("admin@test.com")
+    staff_token = get_token_for("staff@test.com")
+    db = TestingSessionLocal()
+    try:
+        staff_user = db.query(User).filter(User.email == "staff@test.com").first()
+        staff_id = staff_user.id
+    finally:
+        db.close()
+
+    c1 = _create_test_complaint(status_val=ComplaintStatus.submitted)
+    c2 = _create_test_complaint(status_val=ComplaintStatus.submitted)
+    c3 = _create_test_complaint(status_val=ComplaintStatus.resolved)
+
+    # Non-admin cannot call admin status or bulk endpoints
+    forbidden = client.patch(
+        f"/api/v1/admin/complaints/{c1}/status",
+        headers={"Authorization": f"Bearer {staff_token}"},
+        json={"status": "in_progress"},
+    )
+    assert forbidden.status_code == 403
+
+    # Single status update with resolution note
+    status_res = client.patch(
+        f"/api/v1/admin/complaints/{c1}/status",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"status": "resolved", "resolution_note": "Fixed by admin"},
+    )
+    assert status_res.status_code == 200
+    assert status_res.json()["status"] == "resolved"
+    assert status_res.json()["resolution_note"] == "Fixed by admin"
+
+    # Bulk assign skips resolved/closed complaints
+    bulk_assign_res = client.patch(
+        "/api/v1/admin/complaints/bulk/assign",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"complaint_ids": [c1, c2, c3], "staff_id": staff_id},
+    )
+    assert bulk_assign_res.status_code == 200
+    assign_body = bulk_assign_res.json()
+    assert assign_body["updated_count"] == 1
+    assert assign_body["skipped_count"] == 2
+    assert assign_body["complaints"][0]["id"] == c2
+    assert assign_body["complaints"][0]["assigned_staff_id"] == staff_id
+    assert assign_body["complaints"][0]["status"] == "assigned"
+
+    # Bulk status update
+    bulk_status_res = client.patch(
+        "/api/v1/admin/complaints/bulk/status",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"complaint_ids": [c2, c3], "status": "in_progress"},
+    )
+    assert bulk_status_res.status_code == 200
+    status_body = bulk_status_res.json()
+    assert status_body["updated_count"] == 2
+    assert status_body["skipped_count"] == 0

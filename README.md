@@ -1,124 +1,130 @@
-# CampusFix - College Complaint Management System
+# CampusFix — Campus Maintenance & Complaint Management System
 
-CampusFix is a modern, responsive, and easy-to-use web application designed as a college mini-project to help students report and track campus-related issues. It streamlines the workflow between Students, Admins, and Staff members.
+CampusFix is a full-stack, multi-role web application built for reporting, triaging, verifying, and resolving campus infrastructure issues across **Student**, **Staff**, and **Admin** workflows.
 
-## 🚀 Tech Stack
+## Tech Stack
 - **Frontend**: React, Vite, Tailwind CSS v4, React Router
 - **Backend**: FastAPI (Python), SQLAlchemy (ORM), Alembic
-- **Database**: SQLite (Development)
-- **Authentication**: JWT (JSON Web Tokens)
+- **Database**: SQLite (default for local development) / PostgreSQL (production via `postgresql+pg8000`)
+- **Authentication**: JWT Bearer tokens with strict role-based access control (RBAC)
 
 ---
 
-## 🌟 Features
-- **Role-Based Access Control**: Secure dashboards isolated for Student, Admin, and Staff roles.
-- **Complaint Lifecycle**: Track complaints through `Submitted` ➔ `Assigned` ➔ `In Progress` ➔ `Resolved` ➔ `Closed`.
-- **Admin Assignment**: Admins can oversee all campus issues and assign them to specific staff members.
-- **Staff Workflow**: Staff can view their assigned tasks, start work, and leave resolution notes.
-- **Student Feedback**: Students can close resolved tickets and leave feedback/ratings.
-- **Responsive Design**: Works flawlessly on Desktop, Tablet, and Mobile devices.
+## Role Workflows & Features
+
+### Student (`/student/*`)
+- **Interactive Complaint Submission (`/student/complaints/new`)**:
+  - Interactive `CampusMapPicker` for placing and resetting a campus location pin, with `Use Current Location` bounds clamping (`clampX` / `clampY`) and an outside-campus note when coordinates fall outside campus bounds.
+  - Single-select quick-zone chips (`Hostel Block`, `Academic Block`, `Library`, `Cafeteria`, `Sports Complex`) that replace the active zone (or toggle off when clicked again) while keeping the `Location` field editable for room/floor details.
+  - Accountability Notice reminding students that false or prank reports are tracked.
+  - Validated image uploads (`JPEG`, `PNG`, `WEBP`, `<= 5MB`).
+- **Complaint Tracking (`/student/complaints`)**:
+  - Search by title, location, or ticket ID and filter with synced status pills (`All`, `Pending`, `In Progress`, `Resolved`, `Invalid / Not Found`).
+  - Stage progress indicator (`Submitted` -> `Assigned` -> `In Progress` -> `Resolved` / `Invalid / Not Found`), resolution/verification notes, and post-resolution feedback.
+
+### Staff (`/staff/*`)
+- **Operations Dashboard (`/staff/dashboard`)**:
+  - 4 KPI summary cards, priority-sorted active assignments (`Critical` and `High` first) with an urgent count badge, `Pin attached` coordinate indicator, one-click `Start Work` (`assigned` -> `in_progress`), and a Completion Summary panel.
+- **Assigned Queue & Ticket Details (`/staff/complaints`, `/staff/complaints/:id`)**:
+  - Filterable queue (`Assigned`, `In Progress`, `High/Critical`, `Resolved`).
+  - Field verification actions to mark tickets `Resolved` or `Invalid / Not Found` with a required non-empty verification/resolution note.
+- **Read-Only Profile (`/staff/profile`)**:
+  - Displays staff metadata without self-service password controls.
+
+### Admin (`/admin/*`)
+- **Triage & Assignment (`/admin/complaints`)**:
+  - Inspect all campus tickets, filter/search, assign or bulk-assign tickets to staff, and review detailed timelines in the complaint drawer.
+- **Anti-Prank / Repeat-Offender Flagging (`/admin/complaints`, `/admin/students`)**:
+  - Tracks `invalid_complaint_count` per student and surfaces `{count} Invalid` warning badges when `invalid_complaint_count >= 2`.
+- **Account Management (`/admin/students`, `/admin/staff`)**:
+  - Create and activate/deactivate student and staff accounts (admins cannot deactivate their own account).
 
 ---
 
-## 🛠️ Prerequisites
-Make sure you have the following installed on your machine:
-- **Node.js** (v18 or higher)
-- **Python** (v3.10 or higher)
+## Security & Hardening
+- **RBAC & Object-Level Ownership (IDOR Prevention)**:
+  - Students can only access their own complaints and cannot modify statuses or verification notes.
+  - Staff can only view and update complaints explicitly assigned to them (`assigned_staff_id == current_user.id`).
+  - Deactivated accounts (`is_active == False`) are rejected immediately on authenticated API requests.
+- **Upload & Input Safety**:
+  - Complaint image uploads enforce `JPEG`, `PNG`, and `WEBP` MIME + Pillow header/signature checks, `<= 5MB` size limits, EXIF stripping, and randomized filenames.
+  - Pydantic schemas enforce length bounds and strip control characters across text fields.
+- **HTTP & Session Security**:
+  - Security headers middleware adds `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and `Referrer-Policy: strict-origin-when-cross-origin`.
+  - CORS disables `allow_credentials` if wildcard `*` is present; explicit origins should always be configured.
+  - Frontend API interceptors clear local auth state and redirect to `/login` on `401` responses.
 
 ---
 
-## ⚙️ Setup Instructions
+## Environment Configuration
 
-### 1. Backend Setup (FastAPI)
-Open a terminal and navigate to the `backend` folder:
+Configure `backend/.env` from `backend/.env.example`:
+
+- `SECRET_KEY` *(required)*: Strong random secret for signing JWTs (e.g., `openssl rand -hex 32` or `python -c "import secrets; print(secrets.token_urlsafe(32))"`). Never commit `.env` or real secrets.
+- `FRONTEND_URLS`: Comma-separated list of allowed frontend origins for CORS (use explicit origins; never `*` when credentials are enabled).
+- `DATABASE_URL` *(optional)*: Defaults to `sqlite:///./campusfix.db`. For PostgreSQL, set `postgres://...` or `postgresql://...` (automatically normalized to `postgresql+pg8000://...`).
+
+Configure `frontend/.env` from `frontend/.env.example` (optional `VITE_CAMPUS_LAT`, `VITE_CAMPUS_LNG`, and API base URL if overriding defaults).
+
+---
+
+## Local Setup & Database Migrations
+
+### 1. Backend Setup (`backend/`)
 ```bash
 cd backend
-```
-
-Create a virtual environment and activate it:
-```bash
 python -m venv venv
 
-# On Windows:
+# Windows:
 venv\Scripts\activate
-
-# On Mac/Linux:
+# macOS/Linux:
 source venv/bin/activate
-```
 
-Install the dependencies:
-```bash
 pip install -r requirements.txt
-```
-
-Set up the environment variables by creating a `.env` file from the example:
-```bash
-# Copy the example config
 cp .env.example .env
+# Edit .env and set a strong SECRET_KEY
 ```
-*Note: Ensure you open `.env` and configure `SECRET_KEY` with a securely generated string.*
 
-Run database migrations to create the SQLite tables:
+Run Alembic migrations (required on PostgreSQL to add the `invalid` value to the `complaintstatus` enum, as well as to initialize/upgrade tables):
 ```bash
-alembic upgrade head
+python -m alembic upgrade head
 ```
 
-Run the backend server:
+Start the API server:
 ```bash
 uvicorn main:app --reload
 ```
-The backend API will run at `http://127.0.0.1:8000`. You can view the automatic Swagger UI docs at `http://127.0.0.1:8000/docs`.
+Swagger UI is available at `http://127.0.0.1:8000/docs`.
 
----
-
-### 2. Frontend Setup (React)
-Open a **new** terminal window and navigate to the `frontend` folder:
+### 2. Frontend Setup (`frontend/`)
 ```bash
 cd frontend
-```
-
-Install the Node.js dependencies:
-```bash
 npm install
-```
-
-Set up the environment variables by creating a `.env` file from the example:
-```bash
-# Copy the example config
 cp .env.example .env
-```
-
-Start the development server:
-```bash
 npm run dev
 ```
-The frontend will run at `http://localhost:5173`.
+The frontend dev server runs at `http://localhost:5173`.
 
----
-
-## 👥 Demo Users Setup
-To easily test the application, you can automatically create demo users for all three roles.
-
-Make sure your backend virtual environment is activated, then run the seeder script from the `backend` folder:
+### 3. Demo Users (Optional)
+From `backend/` with your virtual environment active:
 ```bash
 python create_demo_users.py
 ```
-
-This will create the following accounts:
-- **Student**: `student@campusfix.edu` / `password123`
-- **Staff**: `staff@campusfix.edu` / `password123`
-- **Admin**: `admin@campusfix.edu` / `password123`
+Creates demo accounts for `student@campusfix.edu`, `staff@campusfix.edu`, and `admin@campusfix.edu` (password: `password123`).
 
 ---
 
-## 🧪 Running Tests (Optional)
-To run the automated backend tests, navigate to the `backend` folder and run:
+## Verification Commands
+
+### Backend Tests
 ```bash
-pytest tests/
+cd backend
+python -m pytest -q
 ```
 
-## 📝 Demo Flow (Viva/Presentation Guide)
-1. Log in as the **Student** (`student@campusfix.edu`). Create a new complaint (e.g., "Fan not working in Lab 2").
-2. Log out and log in as the **Admin** (`admin@campusfix.edu`). View the new complaint and assign it to the Demo Staff.
-3. Log out and log in as the **Staff** (`staff@campusfix.edu`). View assigned complaints, click "Start Working", provide a resolution note, and mark it as "Resolved".
-4. Log back in as the **Student** to verify the timeline, read the resolution note, and close the complaint.
+### Frontend Lint & Production Build
+```bash
+cd frontend
+npm run lint
+npm run build
+```

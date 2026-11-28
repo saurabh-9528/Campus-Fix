@@ -25,6 +25,7 @@ class ComplaintStatus(str, enum.Enum):
     in_progress = "in_progress"
     resolved = "resolved"
     closed = "closed"
+    invalid = "invalid"
 
 class Complaint(Base):
     __tablename__ = "complaints"

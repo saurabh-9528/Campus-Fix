@@ -83,6 +83,26 @@ export const ComplaintDetails = () => {
     }
   };
 
+  const handleMarkInvalid = async () => {
+    if (!resolutionNote.trim()) {
+      setActionError("Please enter a brief verification note before marking as Invalid / Not Found.");
+      return;
+    }
+
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await staffApi.updateComplaintStatus(id, {
+        status: 'invalid',
+        resolution_note: resolutionNote.trim()
+      });
+      await fetchDetails();
+    } catch (err) {
+      setActionError(err.message || 'Failed to mark complaint invalid');
+      setActionLoading(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex justify-center p-12"><Spinner size={32} /></div>;
   }
@@ -221,7 +241,16 @@ export const ComplaintDetails = () => {
                       />
                     </div>
                     
-                    <div className="flex justify-end">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={actionLoading}
+                        onClick={handleMarkInvalid}
+                        className="text-red-700 border-red-200 hover:bg-red-50"
+                      >
+                        Mark Invalid / Not Found
+                      </Button>
                       <Button type="submit" disabled={actionLoading}>
                         {actionLoading ? 'Saving...' : 'Mark as Resolved'}
                       </Button>
@@ -231,8 +260,42 @@ export const ComplaintDetails = () => {
               </Card>
             )}
 
-            {/* 3. Read-only Resolution */}
-            {(complaint.status === 'resolved' || complaint.status === 'closed') && complaint.resolution_note && (
+            {/* Verification / Invalid action when still in assigned state */}
+            {complaint.status === 'assigned' && (
+              <Card className="border-red-200/70 bg-red-50/20">
+                <CardContent className="space-y-3 p-6">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      Issue Not Found on Inspection?
+                    </h3>
+                    <p className="text-xs text-gray-600">
+                      Provide a brief reason to flag this ticket as Invalid / Not Found.
+                    </p>
+                  </div>
+                  <textarea
+                    className="flex w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                    rows={2}
+                    placeholder="E.g., No issue found on inspection / Duplicate or prank entry"
+                    value={resolutionNote}
+                    onChange={(e) => setResolutionNote(e.target.value)}
+                  />
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={actionLoading}
+                      onClick={handleMarkInvalid}
+                      className="text-red-700 border-red-200 hover:bg-red-50"
+                    >
+                      {actionLoading ? 'Saving...' : 'Mark Invalid / Not Found'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* 3. Read-only Resolution / Verification Note */}
+            {(complaint.status === 'resolved' || complaint.status === 'closed' || complaint.status === 'invalid') && complaint.resolution_note && (
               <Card className="border-success/20 bg-green-50/30">
                 <CardContent className="p-6">
                   <h3 className="text-lg font-semibold text-gray-900 flex items-center mb-2">

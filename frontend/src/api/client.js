@@ -17,43 +17,44 @@ export const apiClient = {
       delete headers['Content-Type'];
     }
 
-    try {
-      const response = await fetch(`${BASE_URL}${endpoint}`, {
-        ...options,
-        headers,
-      });
+    const response = await fetch(`${BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
 
-      if (!response.ok) {
-        let errorMessage = 'An error occurred. Please try again.';
-        try {
-          const errorData = await response.json();
-          if (errorData.detail) {
-            if (Array.isArray(errorData.detail)) {
-              // Extract FastAPI validation error messages
-              errorMessage = errorData.detail.map(e => e.msg).join(', ');
-            } else if (typeof errorData.detail === 'string') {
-              errorMessage = errorData.detail;
-            } else {
-              errorMessage = JSON.stringify(errorData.detail);
-            }
-          } else if (errorData.message) {
-            errorMessage = errorData.message;
+    if (!response.ok) {
+      if (response.status === 401 && endpoint !== '/auth/login') {
+        localStorage.removeItem('token');
+        window.dispatchEvent(new Event('auth:unauthorized'));
+      }
+
+      let errorMessage = 'An error occurred. Please try again.';
+      try {
+        const errorData = await response.json();
+        if (errorData.detail) {
+          if (Array.isArray(errorData.detail)) {
+            // Extract FastAPI validation error messages
+            errorMessage = errorData.detail.map(e => e.msg).join(', ');
+          } else if (typeof errorData.detail === 'string') {
+            errorMessage = errorData.detail;
+          } else {
+            errorMessage = JSON.stringify(errorData.detail);
           }
-        } catch (e) {
-          // Response is not JSON
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
         }
-        throw new Error(errorMessage);
+      } catch {
+        // Response is not JSON
       }
-      
-      // Some endpoints might return 204 No Content
-      if (response.status === 204) {
-        return null;
-      }
-
-      return await response.json();
-    } catch (error) {
-      throw error;
+      throw new Error(errorMessage);
     }
+
+    // Some endpoints might return 204 No Content
+    if (response.status === 204) {
+      return null;
+    }
+
+    return await response.json();
   },
 
   get(endpoint, options = {}) {

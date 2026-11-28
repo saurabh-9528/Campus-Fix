@@ -46,6 +46,57 @@ def test_database_url_normalization(monkeypatch, raw_url, expected_url):
     s = Settings(_env_file=None)
     assert s.DATABASE_URL == expected_url
 
+def test_default_local_cors_origins(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.delenv("FRONTEND_URLS", raising=False)
+
+    from core.config import Settings
+
+    s = Settings(_env_file=None)
+    for origin in [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]:
+        assert origin in s.cors_origins
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+)
+def test_cors_preflight_login(origin, monkeypatch):
+    monkeypatch.delenv("FRONTEND_URLS", raising=False)
+    from fastapi.testclient import TestClient
+    import importlib
+    from core import config
+    import main
+
+    importlib.reload(config)
+    importlib.reload(main)
+
+    client = TestClient(main.app)
+    res = client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,authorization",
+        },
+    )
+    assert res.status_code == 200
+    assert res.headers.get("access-control-allow-origin") == origin
+    assert res.headers.get("access-control-allow-credentials") == "true"
+
 def teardown_module(module):
     # Restore the original config after the tests
     import importlib
